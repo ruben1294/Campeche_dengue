@@ -56,19 +56,19 @@ summary(modelo_lag)
 # ----------------------------
 # 4️⃣ Modelo múltiple con variables climáticas
 # ----------------------------
-modelo_multi <- lm(casos ~ temp_max + precip + humedad, data=df)
+modelo_multi <- lm(casos ~ temp_max + precip, data=df)
 summary(modelo_multi)
 
 # ----------------------------
 # 5️⃣ Modelo robusto para controlar outliers
 # ----------------------------
-modelo_robusto <- rlm(casos ~ temp_max + precip + humedad, data=df)
+modelo_robusto <- rlm(casos ~ temp_max + precip, data=df)
 summary(modelo_robusto)
 
 # ----------------------------
 # 6️⃣ Modelo GAM (relaciones no lineales)
 # ----------------------------
-modelo_gam <- gam(casos ~ s(temp_max) + s(precip) + s(humedad), data=df)
+modelo_gam <- gam(casos ~ s(temp_max) + s(precip data=df)
 summary(modelo_gam)
 plot(modelo_gam, se=TRUE, col="blue")
 
