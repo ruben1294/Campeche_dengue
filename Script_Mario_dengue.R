@@ -13,6 +13,19 @@
 #                     requiere parseo de PDFs y no es robusta; se
 #                     mantienen como tabla embebida.
 #
+# Resolución temporal:
+#   - Clima: diario (NASA POWER) → mensual y anual
+#   - ENSO:  mensual (ONI NOAA) → expuesto como serie mensual y
+#            agregado anualmente en múltiples features (media,
+#            estacional DJF/MAM/JJA/SON, máx/mín, conteo de meses
+#            Niño/Niña, rezago de 1 año)
+#   - Dengue: anual (próxima iteración: mensual, con CONAGUA y
+#            Panorama Epidemiológico DGE)
+#
+# Salida `data/processed/monthly_dataset.csv` es la plantilla
+# lista para análisis mensual una vez se incorporen casos
+# mensuales y/o variables CONAGUA puntuales.
+#
 # Salidas:
 #   data/raw/         insumos crudos
 #   data/processed/   tablas limpias (CSV)
@@ -223,77 +236,124 @@ process_data <- function(power, oni, dengue) {
     ) |>
     select(date, year, mo, dy, t_max, t_med, t_min, hr, precip)
 
+  # Clasificación ENSO mensual a partir del ONI
+  oni_classified <- oni |>
+    mutate(enso_state = case_when(
+      is.na(oni)  ~ NA_character_,
+      oni >=  0.5 ~ "Niño",
+      oni <= -0.5 ~ "Niña",
+      TRUE        ~ "Neutral"
+    ))
+
+  # Dataset mensual integrado: clima NASA POWER + ONI mensual.
+  # `casos` se inicializa NA — sirve como plantilla para
+  # incorporar la serie mensual de dengue (Panorama DGE) y/o
+  # variables CONAGUA estacionales en futuras iteraciones.
   monthly <- power_daily |>
     group_by(year, mo) |>
     summarise(
-      t_max = mean(t_max, na.rm = TRUE),
-      t_med = mean(t_med, na.rm = TRUE),
-      t_min = mean(t_min, na.rm = TRUE),
-      hr = mean(hr, na.rm = TRUE),
+      t_max  = mean(t_max, na.rm = TRUE),
+      t_med  = mean(t_med, na.rm = TRUE),
+      t_min  = mean(t_min, na.rm = TRUE),
+      hr     = mean(hr,    na.rm = TRUE),
       precip = sum(precip, na.rm = TRUE),
       .groups = "drop"
     ) |>
     mutate(date = as.Date(sprintf("%04d-%02d-01", year, mo))) |>
-    left_join(oni |> select(year, mo = month, oni), by = c("year", "mo"))
+    left_join(
+      oni_classified |> select(year, mo = month, oni, enso_state),
+      by = c("year", "mo")
+    ) |>
+    mutate(casos = NA_real_) |>
+    select(date, year, mo, casos,
+           t_max, t_med, t_min, hr, precip, oni, enso_state)
 
   annual <- power_daily |>
     group_by(year) |>
     summarise(
-      t_max = mean(t_max, na.rm = TRUE),
-      t_med = mean(t_med, na.rm = TRUE),
-      t_min = mean(t_min, na.rm = TRUE),
-      hr = mean(hr, na.rm = TRUE),
+      t_max  = mean(t_max, na.rm = TRUE),
+      t_med  = mean(t_med, na.rm = TRUE),
+      t_min  = mean(t_min, na.rm = TRUE),
+      hr     = mean(hr,    na.rm = TRUE),
       precip = sum(precip, na.rm = TRUE),
       .groups = "drop"
     ) |>
     rename(anio = year)
 
-  oni_annual <- oni |>
+  # Features ENSO anuales derivados de la serie mensual de ONI:
+  # múltiples agregados estacionales + conteos + rezago anual.
+  oni_features <- oni |>
     group_by(year) |>
     summarise(
-      oni_mean = mean(oni, na.rm = TRUE),
-      oni_djf = mean(oni[month %in% c(12, 1, 2)], na.rm = TRUE),
+      oni_mean      = mean(oni, na.rm = TRUE),
+      oni_djf       = mean(oni[month %in% c(12, 1, 2)], na.rm = TRUE),
+      oni_mam       = mean(oni[month %in% c(3, 4, 5)],  na.rm = TRUE),
+      oni_jja       = mean(oni[month %in% c(6, 7, 8)],  na.rm = TRUE),
+      oni_son       = mean(oni[month %in% c(9, 10, 11)], na.rm = TRUE),
+      oni_max       = suppressWarnings(max(oni, na.rm = TRUE)),
+      oni_min       = suppressWarnings(min(oni, na.rm = TRUE)),
+      n_nino_months = sum(oni >=  0.5, na.rm = TRUE),
+      n_nina_months = sum(oni <= -0.5, na.rm = TRUE),
       .groups = "drop"
     ) |>
+    arrange(year) |>
+    mutate(oni_lag1 = lag(oni_mean, 1)) |>
     rename(anio = year)
 
   annual_full <- dengue |>
-    left_join(annual, by = "anio") |>
-    left_join(oni_annual, by = "anio")
+    left_join(annual,       by = "anio") |>
+    left_join(oni_features, by = "anio")
 
   list(
-    daily = power_daily, monthly = monthly,
-    annual = annual_full, oni = oni
+    daily   = power_daily,
+    monthly = monthly,
+    annual  = annual_full,
+    oni     = oni_classified
   )
 }
 
 # --------------------------------------------------------------
 # 7. Análisis estadístico
 # --------------------------------------------------------------
-PREDICTORS <- c("t_max", "t_med", "t_min", "hr", "precip", "oni_mean")
+PREDICTORS <- c(
+  "t_max", "t_med", "t_min", "hr", "precip",
+  "oni_mean", "oni_djf", "oni_jja", "oni_max",
+  "n_nino_months", "oni_lag1"
+)
 LABELS <- c(
-  t_max    = "Temp. máxima (°C)",
-  t_med    = "Temp. media (°C)",
-  t_min    = "Temp. mínima (°C)",
-  hr       = "Humedad relativa (%)",
-  precip   = "Precipitación anual (mm)",
-  oni_mean = "ONI (ENSO, anual)",
-  casos    = "Casos de dengue"
+  t_max         = "Temp. máxima (°C)",
+  t_med         = "Temp. media (°C)",
+  t_min         = "Temp. mínima (°C)",
+  hr            = "Humedad relativa (%)",
+  precip        = "Precipitación anual (mm)",
+  oni_mean      = "ONI medio anual",
+  oni_djf       = "ONI invierno (DJF)",
+  oni_jja       = "ONI verano (JJA)",
+  oni_max       = "ONI máximo anual",
+  n_nino_months = "Meses Niño (ONI ≥ 0.5)",
+  oni_lag1      = "ONI año previo (lag 1)",
+  casos         = "Casos de dengue"
 )
 
 run_stats <- function(df_annual) {
   vars <- c("casos", PREDICTORS)
 
-  # Shapiro–Wilk
+  # Shapiro–Wilk (omite NA — relevante para oni_lag1)
   shapiro <- map_dfr(vars, function(v) {
-    s <- shapiro.test(df_annual[[v]])
+    x <- na.omit(df_annual[[v]])
+    if (length(x) < 3) {
+      return(tibble(variable = v, W = NA_real_, p = NA_real_))
+    }
+    s <- shapiro.test(x)
     tibble(variable = v, W = unname(s$statistic), p = s$p.value)
   }) |> mutate(stars = sig_stars(p))
 
-  # Spearman vs casos
+  # Spearman vs casos (descarta pares incompletos)
   spearman <- map_dfr(PREDICTORS, function(v) {
+    xy <- df_annual[, c("casos", v)]
+    xy <- xy[stats::complete.cases(xy), ]
     ct <- suppressWarnings(
-      cor.test(df_annual$casos, df_annual[[v]], method = "spearman")
+      cor.test(xy$casos, xy[[v]], method = "spearman")
     )
     tibble(
       variable = v, rho = unname(ct$estimate),
@@ -301,7 +361,7 @@ run_stats <- function(df_annual) {
     )
   })
 
-  # Matriz Spearman completa (con p)
+  # Matriz Spearman (par a par, con manejo de NA)
   cor_mat <- cor(df_annual[, vars],
     method = "spearman",
     use = "pairwise.complete.obs"
@@ -311,19 +371,25 @@ run_stats <- function(df_annual) {
   )
   for (i in seq_along(vars)) {
     for (j in seq_along(vars)) {
+      xy <- df_annual[, c(vars[i], vars[j])]
+      xy <- xy[stats::complete.cases(xy), ]
+      if (nrow(xy) < 3) next
       p_mat[i, j] <- suppressWarnings(
-        cor.test(df_annual[[vars[i]]], df_annual[[vars[j]]],
-          method = "spearman"
-        )$p.value
+        cor.test(xy[[1]], xy[[2]], method = "spearman")$p.value
       )
     }
   }
 
-  # Regresión Binomial Negativa univariada
+  # Regresión Binomial Negativa univariada (na.omit por modelo)
   nb_models <- setNames(
     lapply(PREDICTORS, function(v) {
-      glm.nb(as.formula(paste("casos ~", v)), data = df_annual)
-    }), PREDICTORS
+      glm.nb(
+        as.formula(paste("casos ~", v)),
+        data = df_annual,
+        na.action = na.omit
+      )
+    }),
+    PREDICTORS
   )
   nb_summary <- imap_dfr(nb_models, function(m, name) {
     s <- summary(m)$coefficients
@@ -402,8 +468,7 @@ make_figures <- function(data, stats) {
     scale_x_continuous(breaks = 1:12, labels = month.abb) +
     labs(
       x = "Mes", y = NULL,
-      title = "Climatología mensual de Campeche (2013–2024)",
-      subtitle = "Promedios mensuales NASA POWER · lat 19.84, lon −90.53"
+      title = "Climatología mensual de Campeche (2013–2024)"
     ) +
     theme_sci() +
     theme(
@@ -471,8 +536,7 @@ make_figures <- function(data, stats) {
     scale_x_continuous(breaks = da$anio) +
     labs(
       x = "Año", y = NULL,
-      title = "Serie temporal anual de dengue y variables ambientales",
-      subtitle = "Campeche, 2013–2024 (clima de NASA POWER; ENSO de NOAA ONI)"
+      title = "Serie temporal anual de dengue y variables ambientales"
     ) +
     theme_sci() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
@@ -593,6 +657,12 @@ make_figures <- function(data, stats) {
   cases_dated <- da |>
     mutate(date = as.Date(sprintf("%04d-07-01", anio)))
 
+  state_colours <- c(
+    "Niño"    = "#b2182b",
+    "Neutral" = "grey55",
+    "Niña"    = "#2166ac"
+  )
+
   p7_top <- ggplot(oni_sub, aes(date, oni)) +
     annotate("rect",
       xmin = xlims[1], xmax = xlims[2],
@@ -607,15 +677,15 @@ make_figures <- function(data, stats) {
       linewidth = 0.25, linetype = "dotted"
     ) +
     geom_line(colour = "grey25", linewidth = 0.5) +
-    geom_point(colour = "black", size = 0.7) +
+    geom_point(aes(colour = enso_state), size = 1.2) +
+    scale_colour_manual(values = state_colours, name = "Estado") +
     scale_x_date(
       limits = xlims, date_breaks = "1 year",
       date_labels = "%Y"
     ) +
     labs(
       x = NULL, y = "ONI (anomalía SST, °C)",
-      title = "ENSO (ONI mensual) y casos anuales de dengue",
-      subtitle = "Bandas rosadas: El Niño (ONI ≥ 0.5)   ·   azules: La Niña (ONI ≤ −0.5)"
+      title = "ENSO (ONI mensual) y casos anuales de dengue"
     ) +
     theme_sci() +
     theme(
@@ -696,11 +766,6 @@ make_figures <- function(data, stats) {
       title = sprintf(
         "Casos observados vs predichos · NB ~ %s",
         best_lab
-      ),
-      subtitle = sprintf(
-        "AIC = %.1f   θ = %.2f   IRR = %.3f %s",
-        AIC(best_model), best_model$theta,
-        best_row$IRR, best_row$stars
       )
     ) +
     theme_sci()
@@ -821,8 +886,7 @@ make_figures <- function(data, stats) {
     facet_wrap(~var, scales = "free_y", ncol = 2) +
     labs(
       x = "Año", y = NULL,
-      title = "Validación cruzada: NASA POWER vs CONAGUA",
-      subtitle = "Misma señal climática reportada por dos fuentes independientes"
+      title = "Validación cruzada: NASA POWER vs CONAGUA"
     ) +
     theme_sci() +
     theme(
@@ -830,6 +894,32 @@ make_figures <- function(data, stats) {
       legend.position = "bottom"
     )
   save_fig(p11, 11, "validacion_NASA_vs_CONAGUA", w = 9, h = 6)
+
+  # ---- Figura 12: Calendario ENSO (año × mes) ----------------
+  oni_cal <- oni |>
+    filter(year >= yr_range[1], year <= yr_range[2]) |>
+    mutate(
+      month_lab = factor(month.abb[month], levels = month.abb),
+      year_lab  = factor(year, levels = yr_range[1]:yr_range[2])
+    )
+
+  p12 <- ggplot(oni_cal, aes(month_lab, year_lab, fill = oni)) +
+    geom_tile(colour = "white", linewidth = 0.4) +
+    geom_text(aes(label = sprintf("%.1f", oni)),
+              size = 2.6, colour = "grey15") +
+    scale_fill_gradient2(
+      low = "#2166ac", mid = "white", high = "#b2182b",
+      midpoint = 0, limits = c(-3, 3),
+      name = "ONI"
+    ) +
+    coord_fixed() +
+    labs(
+      x = NULL, y = "Año",
+      title = "Calendario ENSO: ONI mensual (2013–2024)"
+    ) +
+    theme_sci() +
+    theme(panel.grid = element_blank())
+  save_fig(p12, 12, "calendario_ENSO", w = 9, h = 5.5)
 }
 
 # --------------------------------------------------------------
@@ -900,13 +990,19 @@ main <- function() {
 
   log_msg("Procesando series…")
   data <- process_data(power, oni, dengue)
+
+  # Dataset anual integrado (clima + ENSO + casos)
   write.csv(data$annual, file.path(DIRS$proc, "annual_dataset.csv"),
     row.names = FALSE
   )
-  write.csv(data$monthly, file.path(DIRS$proc, "climate_monthly.csv"),
+  # Dataset mensual plantilla — `casos` queda NA hasta que se
+  # incorporen casos mensuales (DGE / Panorama Epidemiológico)
+  # y, opcionalmente, variables CONAGUA por estación.
+  write.csv(data$monthly, file.path(DIRS$proc, "monthly_dataset.csv"),
     row.names = FALSE
   )
-  write.csv(oni, file.path(DIRS$proc, "oni_monthly.csv"),
+  # Series de soporte
+  write.csv(data$oni, file.path(DIRS$proc, "oni_monthly.csv"),
     row.names = FALSE
   )
 
