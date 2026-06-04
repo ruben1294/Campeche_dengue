@@ -1,0 +1,64 @@
+================================================================
+RESUMEN ESTADÍSTICO · DENGUE–CLIMA EN CAMPECHE (2013–2024)
+Generado: 2026-05-23 20:37:05
+Fuente clima: NASA POWER (lat 19.84, lon -90.53)
+Fuente ENSO:  NOAA PSL · ONI mensual
+Fuente dengue: Anuarios DGE / SSA
+================================================================
+
+--- Tabla anual integrada ---
+# A tibble: 12 × 9
+    anio casos t_max t_med t_min    hr precip oni_mean oni_djf
+   <int> <dbl> <dbl> <dbl> <dbl> <dbl>  <dbl>    <dbl>   <dbl>
+ 1  2013  1685  29.3  26.7  24.4  77.4  1224.  -0.234  -0.243 
+ 2  2014   977  29.7  26.6  23.9  75.1   998.   0.205   0.0567
+ 3  2015  7475  30.6  27.4  24.6  73.5   906.   1.55    1.35  
+ 4  2016  4109  30.3  27.2  24.6  74.2  1125.   0.423   1.49  
+ 5  2017   588  29.8  27.0  24.5  75.0  1345.  -0.115  -0.357 
+ 6  2018   194  30.0  26.9  24.1  75.1  1141.   0.0942 -0.187 
+ 7  2019   760  30.5  27.4  24.6  74.5  1341.   0.575   0.803 
+ 8  2020   302  29.8  27.1  24.8  78.1  2181.  -0.272   0.0633
+ 9  2021    90  30.4  27.3  24.6  74.9  1478.  -0.635  -0.857 
+10  2022   604  30.0  27.0  24.4  76.6  1360.  -0.85   -0.773 
+11  2023 13397  31.4  28.2  25.4  72.0   696.   0.9     0.41  
+12  2024  5996  31.0  28.0  25.4  74.6   929.   0.437   1.04  
+
+--- Shapiro–Wilk (normalidad por variable) ---
+# A tibble: 7 × 4
+  variable     W       p stars
+  <chr>    <dbl>   <dbl> <chr>
+1 casos    0.744 0.00229 **   
+2 t_max    0.971 0.923   ns   
+3 t_med    0.919 0.281   ns   
+4 t_min    0.900 0.159   ns   
+5 hr       0.947 0.594   ns   
+6 precip   0.895 0.135   ns   
+7 oni_mean 0.978 0.974   ns   
+
+--- Correlaciones de Spearman vs casos ---
+# A tibble: 6 × 4
+  variable    rho        p stars
+  <chr>     <dbl>    <dbl> <chr>
+1 t_max     0.483 0.115    ns   
+2 t_med     0.448 0.147    ns   
+3 t_min     0.301 0.342    ns   
+4 hr       -0.594 0.0458   *    
+5 precip   -0.846 0.000970 ***  
+6 oni_mean  0.755 0.00660  **   
+
+--- Regresión Binomial Negativa univariada ---
+# A tibble: 6 × 8
+  variable   IRR    lo     hi         p stars   AIC theta
+  <chr>    <dbl> <dbl>  <dbl>     <dbl> <chr> <dbl> <dbl>
+1 t_max    3.66  1.36   9.82  0.00999   **     213. 1.02 
+2 t_med    5.48  1.58  19.0   0.00741   **     213. 1.01 
+3 t_min    5.35  1.38  20.7   0.0153    *      215. 0.917
+4 hr       0.605 0.428  0.854 0.00431   **     212. 1.05 
+5 precip   0.997 0.996  0.999 0.000144  ***    209. 1.31 
+6 oni_mean 5.43  2.49  11.9   0.0000215 ***    209. 1.30 
+
+--- Mejor modelo por AIC ---
+Predictor: precip   AIC = 209.1
+
+Figuras: /home/ruben/repos_clonados/Campeche_dengue/Figuras
+Datos procesados: /home/ruben/repos_clonados/Campeche_dengue/data/processed
