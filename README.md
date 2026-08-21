@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/1215439624.svg)](https://doi.org/10.5281/zenodo.22040615)
+
 # Análisis de dengue y clima en Campeche, México
 
 Este repositorio contiene un estudio reproducible de la relación entre variables climáticas y la incidencia de casos de dengue en Campeche, México.
