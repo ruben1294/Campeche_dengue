@@ -210,8 +210,7 @@ parse_oni <- function(path) {
 # 5. Datos de dengue (tabla embebida)
 # --------------------------------------------------------------
 # Fuente: Anuarios de Morbilidad DGE / SSA y conteos del análisis
-# original. Mantener trazable: cualquier actualización debe
-# referenciar el año del Anuario consultado.
+# original.
 dengue_annual_table <- function() {
   tibble(
     anio = 2013:2024,
@@ -239,23 +238,23 @@ process_data <- function(power, oni, dengue) {
   # Clasificación ENSO mensual a partir del ONI
   oni_classified <- oni |>
     mutate(enso_state = case_when(
-      is.na(oni)  ~ NA_character_,
-      oni >=  0.5 ~ "Niño",
+      is.na(oni) ~ NA_character_,
+      oni >= 0.5 ~ "Niño",
       oni <= -0.5 ~ "Niña",
-      TRUE        ~ "Neutral"
+      TRUE ~ "Neutral"
     ))
 
-  # Dataset mensual integrado: clima NASA POWER + ONI mensual.
-  # `casos` se inicializa NA — sirve como plantilla para
+  # Dataset mensual integrado: clima NASA POWER y ONI mensual.
+  # `casos` se inicializa NA, lo que sirve como plantilla para
   # incorporar la serie mensual de dengue (Panorama DGE) y/o
-  # variables CONAGUA estacionales en futuras iteraciones.
+  # variables de CONAGUA estacionales en futuras iteraciones.
   monthly <- power_daily |>
     group_by(year, mo) |>
     summarise(
-      t_max  = mean(t_max, na.rm = TRUE),
-      t_med  = mean(t_med, na.rm = TRUE),
-      t_min  = mean(t_min, na.rm = TRUE),
-      hr     = mean(hr,    na.rm = TRUE),
+      t_max = mean(t_max, na.rm = TRUE),
+      t_med = mean(t_med, na.rm = TRUE),
+      t_min = mean(t_min, na.rm = TRUE),
+      hr = mean(hr, na.rm = TRUE),
       precip = sum(precip, na.rm = TRUE),
       .groups = "drop"
     ) |>
@@ -265,16 +264,18 @@ process_data <- function(power, oni, dengue) {
       by = c("year", "mo")
     ) |>
     mutate(casos = NA_real_) |>
-    select(date, year, mo, casos,
-           t_max, t_med, t_min, hr, precip, oni, enso_state)
+    select(
+      date, year, mo, casos,
+      t_max, t_med, t_min, hr, precip, oni, enso_state
+    )
 
   annual <- power_daily |>
     group_by(year) |>
     summarise(
-      t_max  = mean(t_max, na.rm = TRUE),
-      t_med  = mean(t_med, na.rm = TRUE),
-      t_min  = mean(t_min, na.rm = TRUE),
-      hr     = mean(hr,    na.rm = TRUE),
+      t_max = mean(t_max, na.rm = TRUE),
+      t_med = mean(t_med, na.rm = TRUE),
+      t_min = mean(t_min, na.rm = TRUE),
+      hr = mean(hr, na.rm = TRUE),
       precip = sum(precip, na.rm = TRUE),
       .groups = "drop"
     ) |>
@@ -285,14 +286,14 @@ process_data <- function(power, oni, dengue) {
   oni_features <- oni |>
     group_by(year) |>
     summarise(
-      oni_mean      = mean(oni, na.rm = TRUE),
-      oni_djf       = mean(oni[month %in% c(12, 1, 2)], na.rm = TRUE),
-      oni_mam       = mean(oni[month %in% c(3, 4, 5)],  na.rm = TRUE),
-      oni_jja       = mean(oni[month %in% c(6, 7, 8)],  na.rm = TRUE),
-      oni_son       = mean(oni[month %in% c(9, 10, 11)], na.rm = TRUE),
-      oni_max       = suppressWarnings(max(oni, na.rm = TRUE)),
-      oni_min       = suppressWarnings(min(oni, na.rm = TRUE)),
-      n_nino_months = sum(oni >=  0.5, na.rm = TRUE),
+      oni_mean = mean(oni, na.rm = TRUE),
+      oni_djf = mean(oni[month %in% c(12, 1, 2)], na.rm = TRUE),
+      oni_mam = mean(oni[month %in% c(3, 4, 5)], na.rm = TRUE),
+      oni_jja = mean(oni[month %in% c(6, 7, 8)], na.rm = TRUE),
+      oni_son = mean(oni[month %in% c(9, 10, 11)], na.rm = TRUE),
+      oni_max = suppressWarnings(max(oni, na.rm = TRUE)),
+      oni_min = suppressWarnings(min(oni, na.rm = TRUE)),
+      n_nino_months = sum(oni >= 0.5, na.rm = TRUE),
       n_nina_months = sum(oni <= -0.5, na.rm = TRUE),
       .groups = "drop"
     ) |>
@@ -301,7 +302,7 @@ process_data <- function(power, oni, dengue) {
     rename(anio = year)
 
   annual_full <- dengue |>
-    left_join(annual,       by = "anio") |>
+    left_join(annual, by = "anio") |>
     left_join(oni_features, by = "anio")
 
   list(
@@ -338,7 +339,7 @@ LABELS <- c(
 run_stats <- function(df_annual) {
   vars <- c("casos", PREDICTORS)
 
-  # Shapiro–Wilk (omite NA — relevante para oni_lag1)
+  # Shapiro–Wilk (omite NA, lo que es relevante para oni_lag1)
   shapiro <- map_dfr(vars, function(v) {
     x <- na.omit(df_annual[[v]])
     if (length(x) < 3) {
@@ -906,7 +907,8 @@ make_figures <- function(data, stats) {
   p12 <- ggplot(oni_cal, aes(month_lab, year_lab, fill = oni)) +
     geom_tile(colour = "white", linewidth = 0.4) +
     geom_text(aes(label = sprintf("%.1f", oni)),
-              size = 2.6, colour = "grey15") +
+      size = 2.6, colour = "grey15"
+    ) +
     scale_fill_gradient2(
       low = "#2166ac", mid = "white", high = "#b2182b",
       midpoint = 0, limits = c(-3, 3),
